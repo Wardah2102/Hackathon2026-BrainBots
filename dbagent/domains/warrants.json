@@ -1,0 +1,63 @@
+{
+  "name": "Warrants",
+  "description": "Consultant-facing reporting over customers, warrant rounds, contacts and invoicing. Table and column names below are illustrative patterns; always confirm the real identifiers with the schema tools.",
+  "glossary": {
+    "customer / client": "The customer (a.k.a. client) entity. Distinguish customers by their identifier, not by name, because names can repeat.",
+    "round": "A warrant round organised by a customer. Each round has a type and a date; period/quarter filters apply to the round's date.",
+    "sales round / choice round / issue round": "The three round types. Map the requested type to the round-type column value; do not mix types unless asked.",
+    "issue round": "A row in warrants.IssueRounds, linked to its round via IssueRounds.Round_Id = Rounds.Id. It records the sell window (StartSellDate, EndSellDate) and the PurchasedWarrants quantity.",
+    "customer link path": "To go from an issue round to its customer: warrants.IssueRounds.Round_Id = warrants.Rounds.Id, then warrants.Rounds.Customer_Id = warrants.Customers.Id (customer name = Customers.Name).",
+    "FIP": "A boolean flag on the customer (Financial Involvement Plan). 'Excluding FIP' means keep only customers where the FIP flag is not set; 'FIP customers' means the flag is set.",
+    "purchased warrants": "The PurchasedWarrants integer column on warrants.IssueRounds. This is the recorded quantity per issue round. 'Total purchased warrants per customer' is SUM(IssueRounds.PurchasedWarrants) grouped by customer. Do NOT derive this from the Orders or Warrants tables.",
+    "sales date / sell date / sell period": "The issue round's sell window on warrants.IssueRounds: StartSellDate (start) and EndSellDate (end). A sales/sell date range filters these columns, NOT Orders.SellDate.",
+    "warrants": "The quantity of warrants granted, recorded per round. 'Total warrants per customer' is a SUM aggregated at customer level, counting each qualifying round once.",
+    "SME / LE": "Customer size/status classification (Small-Medium Enterprise vs Large Enterprise). Filter on the size/status column.",
+    "primary contact": "The main contact of a customer or round (a flag such as IsPrimary). A customer may have several contacts; return only the primary one when asked.",
+    "active customer": "A customer whose status is active for the requested year; filter on the active/status column for that period.",
+    "bank": "The customer's bank attribute.",
+    "invoice / invoiced amount": "Amounts invoiced to a customer; aggregate per customer for the requested period."
+  },
+  "rules": [
+    "'Purchased warrants' is the warrants.IssueRounds.PurchasedWarrants column. A total per customer is SUM(ir.PurchasedWarrants) grouped by the customer key. Never route this metric through warrants.Orders or warrants.Warrants.",
+    "A sales/sell date range applies to warrants.IssueRounds.StartSellDate and EndSellDate, not to Orders.SellDate. 'from A to B' is inclusive of both ends: StartSellDate >= A AND EndSellDate <= B.",
+    "To reach the customer of an issue round, join warrants.IssueRounds.Round_Id = warrants.Rounds.Id and warrants.Rounds.Customer_Id = warrants.Customers.Id; the customer name is warrants.Customers.Name.",
+    "Quarter and year filters apply to the ROUND date column. Q4 2025 = round date >= '2025-10-01' AND < '2026-01-01' (includes 01/10/2025 and 31/12/2025, excludes 30/09/2025 and 01/01/2026).",
+    "'since DATE' on rounds means round date >= DATE and respects the requested round type.",
+    "When a customer has multiple qualifying rounds, do not duplicate the customer: group by the customer key. Only emit one row per round when round-level output is explicitly requested.",
+    "Total warrants per customer must aggregate multiple qualifying rounds once each (avoid row multiplication from joins before summing).",
+    "For 'the primary contact of the most recent round', pick the contact from each customer's latest qualifying round, not from older rounds.",
+    "If a qualifying round has no primary contact, or the primary contact has no email, still return the customer with NULLs (LEFT JOIN); never invent a contact or email address.",
+    "Apply 'excluding FIP' as a real WHERE condition on the FIP flag; keep customers with FIP not set.",
+    "A missing bank/status value must not drop a customer unless the request filters on that attribute.",
+    "Customer names may contain apostrophes, ampersands or slashes; treat names as data (parameter-style literals), never as SQL to execute.",
+    "Future participation (e.g. 'customers who will participate next year') cannot be determined from recorded data — report it as unavailable rather than inventing rows.",
+    "Unrecognised business terms (e.g. an unknown status code) or undefined metrics (e.g. 'budget') should trigger a clarification, not a silent guess."
+  ],
+  "examples": [
+    {
+      "question": "Provide me with the customer names, along with the total of their purchased warrants from sales date of 01st Jan 2025 to 31 Dec 2025.",
+      "sql": "SELECT c.Name AS CustomerName, SUM(ir.PurchasedWarrants) AS TotalPurchasedWarrants\nFROM warrants.IssueRounds AS ir\nINNER JOIN warrants.Rounds AS r ON ir.Round_Id = r.Id\nINNER JOIN warrants.Customers AS c ON r.Customer_Id = c.Id\nWHERE ir.StartSellDate >= '2025-01-01' AND ir.EndSellDate <= '2025-12-31 23:59:59'\nGROUP BY c.Name\nORDER BY c.Name ASC",
+      "notes": "'Purchased warrants' is the IssueRounds.PurchasedWarrants column (not an Orders aggregate). The sales-date range filters IssueRounds.StartSellDate/EndSellDate (not Orders.SellDate). Reach the customer via IssueRounds.Round_Id -> Rounds.Id and Rounds.Customer_Id -> Customers.Id. Group by customer to total across their qualifying issue rounds; drop the GROUP BY/SUM and select ir.Round_Id, ir.PurchasedWarrants, ir.StartSellDate, ir.EndSellDate if the user wants one row per round instead."
+    },
+    {
+      "question": "Give me customers who organised a choice round in Q4 2025.",
+      "sql": "SELECT DISTINCT c.Id, c.Name\nFROM dbo.Customers AS c\nJOIN dbo.Rounds AS r ON r.CustomerId = c.Id\nWHERE r.RoundType = 'Choice'\n  AND r.RoundDate >= '2025-10-01' AND r.RoundDate < '2026-01-01'",
+      "notes": "Half-open date range makes the quarter boundaries exact. DISTINCT (or GROUP BY c.Id) prevents duplicate customers when a customer has several rounds."
+    },
+    {
+      "question": "Give me total warrants granted in 2025 per customer, including customers with multiple rounds.",
+      "sql": "SELECT c.Id, c.Name, SUM(r.WarrantsGranted) AS TotalWarrants\nFROM dbo.Customers AS c\nJOIN dbo.Rounds AS r ON r.CustomerId = c.Id\nWHERE r.RoundDate >= '2025-01-01' AND r.RoundDate < '2026-01-01'\nGROUP BY c.Id, c.Name",
+      "notes": "Aggregate at customer level; each qualifying round contributes once, so multiple rounds are summed but the customer is not duplicated."
+    },
+    {
+      "question": "Give me Q4 2025 choice-round customers and their primary contact email, excluding FIP customers.",
+      "sql": "SELECT DISTINCT c.Id, c.Name, ct.Email\nFROM dbo.Customers AS c\nJOIN dbo.Rounds AS r ON r.CustomerId = c.Id\nLEFT JOIN dbo.Contacts AS ct ON ct.CustomerId = c.Id AND ct.IsPrimary = 1\nWHERE r.RoundType = 'Choice'\n  AND r.RoundDate >= '2025-10-01' AND r.RoundDate < '2026-01-01'\n  AND c.IsFip = 0",
+      "notes": "LEFT JOIN keeps customers whose primary contact or email is missing (NULL) instead of dropping them. FIP exclusion is an explicit WHERE condition."
+    },
+    {
+      "question": "Give me active 2026 customers who participated in a sales round in 2025, excluding FIP.",
+      "sql": "SELECT DISTINCT c.Id, c.Name\nFROM dbo.Customers AS c\nJOIN dbo.Rounds AS r ON r.CustomerId = c.Id\nWHERE c.IsActive = 1\n  AND r.RoundType = 'Sales'\n  AND r.RoundDate >= '2025-01-01' AND r.RoundDate < '2026-01-01'\n  AND c.IsFip = 0",
+      "notes": "All requested filters are combined; the active flag is evaluated for the requested year per the model."
+    }
+  ]
+}

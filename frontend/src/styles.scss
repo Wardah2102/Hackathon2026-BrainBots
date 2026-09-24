@@ -1,0 +1,9 @@
+@use 'igniteui-angular/lib/core/styles/themes' as *;
+@include core();
+@include theme($schema: $light-material-schema, $palette: $light-material-palette);
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+// One font family across the whole tool: make headings use the body font.
+:root { --ig-font-family-heading: var(--ig-font-family-body); }
+body { font-family: var(--ig-font-family-body), 'Inter', 'Segoe UI', sans-serif; background: var(--ig-background-subtle); color: var(--ig-text-bold); }
+button, input, textarea, select { font: inherit; }

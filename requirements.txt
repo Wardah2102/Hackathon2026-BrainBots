@@ -1,0 +1,21 @@
+sqlalchemy>=2.0
+pydantic>=2.6
+python-dotenv>=1.0
+openai>=1.30
+fastapi>=0.110         # HTTP API + Swagger UI
+uvicorn[standard]>=0.29  # ASGI server
+
+# Database drivers (install the ones you need)
+psycopg[binary]>=3.1        # PostgreSQL
+pyodbc>=5.1                 # SQL Server
+ibm-db-sa>=0.4              # DB2 (also needs the ibm_db driver)
+
+# ---------------------------------------------------------------------------
+# Environment variables (Azure AI Foundry) — all optional except the first 2:
+#   AZURE_OPENAI_ENDPOINT          (required)
+#   AZURE_OPENAI_API_KEY           (required)
+#   AZURE_OPENAI_API_VERSION       default 2024-10-21
+#   AZURE_OPENAI_SQL_DEPLOYMENT    default gpt-4.1        (NL->SQL agent)
+#   AZURE_OPENAI_ENRICH_DEPLOYMENT default gpt-4o-mini    (schema descriptions)
+#   AZURE_OPENAI_EMBED_DEPLOYMENT  default text-embedding-3-large (schema linking)
+# Swap any model by changing the matching *_DEPLOYMENT var — no code changes.

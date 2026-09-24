@@ -1,0 +1,25 @@
+# Python
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Secrets / local config (never commit credentials)
+.env
+.env.*
+!.env.example
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+npm-debug.log*
+
+# Runtime data
+conversations/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.log

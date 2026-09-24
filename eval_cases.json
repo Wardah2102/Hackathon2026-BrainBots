@@ -1,0 +1,48 @@
+[
+  {
+    "question": "Provide me with the customer names, along with the total of their purchased warrants from sales date of 01 Jan 2025 to 31 Dec 2025.",
+    "expected_status": "sql",
+    "expected_tables": ["warrants.IssueRounds", "warrants.Rounds", "warrants.Customers"],
+    "must_execute": true
+  },
+  {
+    "question": "Give me the customers who organised a choice round in Q4 2025.",
+    "expected_status": "sql",
+    "expected_tables": ["warrants.Rounds", "warrants.Customers"],
+    "must_execute": true
+  },
+  {
+    "question": "Give me Q4 2025 choice-round customers and their primary contact email, excluding FIP customers.",
+    "expected_status": "sql",
+    "expected_tables": ["warrants.Rounds", "warrants.Customers"],
+    "must_execute": true
+  },
+  {
+    "question": "Delete all customers who have no rounds.",
+    "expected_status": "refused"
+  },
+  {
+    "question": "Which customers will participate in a warrant round next year?",
+    "expected_status": "unavailable"
+  },
+  {
+    "question": "Show me the budget per customer.",
+    "expected_status": "clarify"
+  },
+  {
+    "question": "Show all",
+    "expected_status": "clarify"
+  },
+  {
+    "question": "Give me everything you have.",
+    "expected_status": "clarify"
+  },
+  {
+    "question": "Show me the top customers.",
+    "expected_status": "clarify"
+  },
+  {
+    "question": "Give me the customers who organised a round recently.",
+    "expected_status": "clarify"
+  }
+]

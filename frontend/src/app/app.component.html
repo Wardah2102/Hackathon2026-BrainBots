@@ -1,0 +1,870 @@
+<div class="shell">
+  <ig-header class="app-header" applicationName="sdworx query agent">
+    <div right class="header-right">
+      <ig-dropdown
+        class="header-lang"
+        appearance="outlined"
+        behavior="select"
+        [items]="languageItems"
+        [(selected)]="selectedLanguage"
+        (selectedChange)="onLanguageChange()">
+      </ig-dropdown>
+      <div class="header-user" [class.open]="userMenuOpen">
+        <button type="button" class="header-user-trigger" (click)="toggleUserMenu(); $event.stopPropagation()">
+          <ig-avatar icon="user" size="sm" color="accent-01"></ig-avatar>
+          <span class="user-meta">
+            <span class="user-name">{{ currentUser.name }}</span>
+            <span class="user-role">{{ currentUser.role }}</span>
+          </span>
+        </button>
+
+        <div class="user-menu" *ngIf="userMenuOpen">
+          <button type="button" class="user-menu-item" *ngFor="let u of users" [class.active]="u.id === currentUser.id"
+            (click)="selectUser(u)">
+            <ig-avatar icon="user" size="sm" color="accent-01"></ig-avatar>
+            <span class="user-meta">
+              <span class="user-name">{{ u.name }}</span>
+              <span class="user-role">{{ u.role }}</span>
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </ig-header>
+
+  <div class="sidebar-col">
+    <ig-sidebar class="sidebar" [attr.data-active]="activeView" [items]="visibleSidebarItems"
+      (itemClicked)="onSidebarItemClick($event)" expanded>
+      <ng-template #header let-isExpanded="isExpanded"></ng-template>
+    </ig-sidebar>
+    <div class="sidebar-note" *ngIf="!activeDatabase">Connect and analyze a database before using queries.</div>
+  </div>
+
+  <main class="content">
+    <!-- Dashboard view -->
+    <section class="dashboard" *ngIf="activeView === 'dashboard'">
+      <div class="page-head">
+        <div>
+          <h1>{{ t('dashboard') }}</h1>
+          <p class="muted">{{ activeDatabase ? t('dashboardSub') : t('dashboardSubNoDb') }}</p>
+        </div>
+      </div>
+
+      <ig-card class="results-card" appearance="clear" shadow *ngIf="!activeDatabase">
+        <ng-container *ngIf="isAdmin">
+          <div class="empty-results connect-cta">
+            <span class="empty-icon neutral"><igx-icon>storage</igx-icon></span>
+            <h3>{{ t('connectToStart') }}</h3>
+            <p class="muted">{{ t('connectToStartSub') }}</p>
+            <button igButton igButtonColor="brand" igButtonAppearance="filled" type="button" class="connect-cta-btn" (click)="goToConnect()">{{ t('connectDatabaseBtn') }}</button>
+          </div>
+          <div class="onboarding-steps">
+            <div class="onboarding-step"><span class="step-num">1</span><div><strong>{{ t('step1Title') }}</strong><p class="muted">{{ t('step1Sub') }}</p></div></div>
+            <div class="onboarding-step"><span class="step-num">2</span><div><strong>{{ t('step2Title') }}</strong><p class="muted">{{ t('step2Sub') }}</p></div></div>
+            <div class="onboarding-step"><span class="step-num">3</span><div><strong>{{ t('step3Title') }}</strong><p class="muted">{{ t('step3Sub') }}</p></div></div>
+          </div>
+        </ng-container>
+        <div class="empty-results" *ngIf="!isAdmin">
+          <span class="empty-icon neutral"><igx-icon>storage</igx-icon></span>
+          <h3>{{ t('noDatabase') }}</h3>
+          <p class="muted">{{ t('noDatabaseSub') }}</p>
+          <button igButton igButtonAppearance="outlined" type="button" class="refresh-status-btn" (click)="loadDashboard()">{{ t('refreshStatus') }}</button>
+        </div>
+      </ig-card>
+
+      <ng-container *ngIf="activeDatabase">
+      <div class="notice danger" *ngIf="dashboardError">
+        <igx-icon class="notice-icon">error_outline</igx-icon>
+        <div class="notice-copy">
+          <strong>We could not load the dashboard data.</strong>
+          <p class="muted">Your queries are still available.</p>
+        </div>
+      </div>
+      <button *ngIf="dashboardError" igButton igButtonColor="brand" igButtonAppearance="filled" type="button" class="retry-btn" (click)="loadDashboard()">{{ t('tryAgain') }}</button>
+
+      <ng-template #statPending>
+        <div class="stat-value pending">–</div>
+        <div class="stat-loading">Loading…</div>
+      </ng-template>
+
+      <div class="stat-grid">
+        <ig-card class="stat-card" appearance="clear" shadow>
+          <div class="stat-head"><span>{{ t('queriesRun') }}</span><igx-icon class="stat-help">help</igx-icon></div>
+          <div class="stat-value" *ngIf="!dashboardLoading && !dashboardError; else statPending">{{ queriesRun }}</div>
+        </ig-card>
+        <ig-card class="stat-card" appearance="clear" shadow>
+          <div class="stat-head"><span>{{ t('queriesSaved') }}</span><igx-icon class="stat-help">help</igx-icon></div>
+          <div class="stat-value">{{ queriesSaved }}</div>
+        </ig-card>
+        <ig-card class="stat-card" appearance="clear" shadow>
+          <div class="stat-head"><span>{{ t('recentExports') }}</span><igx-icon class="stat-help">help</igx-icon></div>
+          <div class="stat-value">{{ recentExports }}</div>
+        </ig-card>
+      </div>
+
+      <ig-card class="results-card" appearance="clear" shadow>
+        <div header class="results-head"><h2>{{ t('recentActivity') }}</h2></div>
+        <div class="results-body">
+          <div class="empty-results" *ngIf="dashboardError || !conversations.length; else activityList">
+            <span class="empty-icon neutral"><igx-icon>history</igx-icon></span>
+            <h3>{{ dashboardError ? 'Activity is currently unavailable.' : 'No activity yet' }}</h3>
+            <p class="muted" *ngIf="!dashboardError">Run a query to see your recent activity here.</p>
+          </div>
+          <ng-template #activityList>
+            <button class="history-item" *ngFor="let c of conversations.slice(0, 6); trackBy: trackByIndex"
+              (click)="openConversation(c)">
+              <igx-icon>schedule</igx-icon>
+              <span>
+                <strong>{{ c.last_question || 'Untitled query' }}</strong>
+                <small>{{ c.turn_count }} runs · {{ c.updated_at | date:'medium' }}</small>
+              </span>
+              <igx-icon class="go">arrow_forward</igx-icon>
+            </button>
+          </ng-template>
+        </div>
+      </ig-card>
+      </ng-container>
+    </section>
+
+    <!-- New Query view -->
+    <section class="new-query" *ngIf="activeView === 'workspace'">
+      <div class="page-head">
+        <h1>{{ t('newQuery') }}</h1>
+        <span class="db-pill" *ngIf="activeDatabase"><igx-icon>storage</igx-icon> {{ t('activeDb') }}: {{ activeDatabase.projectName }}</span>
+      </div>
+
+      <ig-card class="results-card" appearance="clear" shadow *ngIf="!activeDatabase">
+        <ng-container *ngIf="isAdmin">
+          <div class="empty-results connect-cta">
+            <span class="empty-icon neutral"><igx-icon>storage</igx-icon></span>
+            <h3>{{ t('connectToStart') }}</h3>
+            <p class="muted">{{ t('connectToStartSub') }}</p>
+            <button igButton igButtonColor="brand" igButtonAppearance="filled" type="button" class="connect-cta-btn" (click)="goToConnect()">{{ t('connectDatabaseBtn') }}</button>
+          </div>
+          <div class="onboarding-steps">
+            <div class="onboarding-step"><span class="step-num">1</span><div><strong>{{ t('step1Title') }}</strong><p class="muted">{{ t('step1Sub') }}</p></div></div>
+            <div class="onboarding-step"><span class="step-num">2</span><div><strong>{{ t('step2Title') }}</strong><p class="muted">{{ t('step2Sub') }}</p></div></div>
+            <div class="onboarding-step"><span class="step-num">3</span><div><strong>{{ t('step3Title') }}</strong><p class="muted">{{ t('step3Sub') }}</p></div></div>
+          </div>
+        </ng-container>
+        <div class="empty-results" *ngIf="!isAdmin">
+          <span class="empty-icon neutral"><igx-icon>storage</igx-icon></span>
+          <h3>{{ t('noDatabase') }}</h3>
+          <p class="muted">{{ t('noDatabaseSub') }}</p>
+        </div>
+      </ig-card>
+
+      <ng-container *ngIf="activeDatabase">
+      <ig-card class="conversation-card" appearance="clear" shadow
+        *ngIf="messages.length || (!isLoading && !isClarifying)">
+        <div header class="query-card-head">
+          <div>
+            <h2>{{ messages.length ? t('conversation') : t('askQuestion') }}</h2>
+            <p class="muted" *ngIf="!messages.length">{{ t('askQuestionSub') }}</p>
+          </div>
+          <a class="help-link" href="#" (click)="$event.preventDefault(); openQueryHelp()">
+            {{ t('howToWrite') }} <igx-icon>help_outline</igx-icon>
+          </a>
+        </div>
+
+        <div class="thread" *ngIf="messages.length">
+          <div class="q-item" *ngFor="let q of userQuestions; let i = index; trackBy: trackByIndex"
+            [class.q-main]="i === 0" [class.q-sub]="i > 0">
+            <span class="q-arrow" *ngIf="i > 0"><i class="ig-icon-o-down-right"></i></span>
+            <span class="q-text">{{ q }}</span>
+          </div>
+          <div class="assistant-ask" *ngIf="isClarifying && clarifyQuestion">
+            <igx-icon>smart_toy</igx-icon>
+            <span>{{ clarifyQuestion }}</span>
+          </div>
+        </div>
+
+        <ng-container *ngIf="!isLoading && !isClarifying">
+          <!-- First question -->
+          <form class="query-form" (ngSubmit)="runQuery()" *ngIf="!messages.length">
+            <textarea
+              class="query-input"
+              [(ngModel)]="question"
+              name="question"
+              rows="3"
+              placeholder="{{ t('placeholderFirst') }}"
+              [disabled]="isLoading"
+              (keydown.enter)="onEnter($event)">
+            </textarea>
+            <button igButton igButtonColor="brand" igButtonAppearance="filled" type="submit" [disabled]="!question.trim() || isLoading">
+              {{ t('runQuery') }}
+            </button>
+          </form>
+
+          <!-- Refine current result -->
+          <div class="refine" *ngIf="messages.length">
+            <div class="saved-confirm" *ngIf="justSaved"><igx-icon>check_circle</igx-icon> {{ t('querySaved') }}</div>
+            <div class="saved-confirm info" *ngIf="isNoData && !justSaved"><igx-icon>info</igx-icon> {{ t('noMatching') }}</div>
+            <label class="refine-label" for="refineInput">{{ t('refineCurrent') }}</label>
+            <form class="refine-form" (ngSubmit)="runQuery()">
+              <input
+                id="refineInput"
+                class="query-input"
+                [(ngModel)]="question"
+                name="question"
+                autocomplete="off"
+                placeholder="{{ t('placeholderRefine') }}"
+                [disabled]="isLoading"
+                (keydown.enter)="onEnter($event)" />
+              <button igButton igButtonColor="brand" igButtonAppearance="filled" type="submit" [disabled]="!question.trim() || isLoading">
+                {{ isNoData ? t('adjustQuery') : t('refineResults') }}
+              </button>
+              <button *ngIf="isNoData" igButton igButtonAppearance="outlined" type="button" (click)="newConversation()">
+                {{ t('startNewQuery') }}
+              </button>
+            </form>
+            <p class="muted refine-help">{{ t('refineHelp') }}</p>
+          </div>
+        </ng-container>
+      </ig-card>
+
+      <div class="notice" *ngIf="validationNotice">
+        <igx-icon class="notice-icon">info</igx-icon>
+        <div class="notice-copy">
+          <strong>{{ validationNotice }}</strong>
+          <p class="muted">Tip: name the entities you want (e.g. customers, rounds, banks) and add a bit more detail.</p>
+        </div>
+      </div>
+
+      <ng-container *ngIf="isLoading">
+        <!-- Qualification: initial submit -->
+        <ng-container *ngIf="!processing">
+          <ig-card class="status-card" appearance="clear" shadow>
+            <div header class="status-head">
+              <h2>{{ t('checkingQuestion') }}</h2>
+              <span class="status-badge in-progress">IN PROGRESS</span>
+            </div>
+            <div class="qualifying">
+              <span class="spinner" aria-hidden="true"></span>
+              <div class="qualifying-copy">
+                <strong>{{ t('validating') }}</strong>
+                <p class="muted">{{ t('validatingSub') }}</p>
+              </div>
+            </div>
+          </ig-card>
+        </ng-container>
+
+        <!-- Processing: question is clear, fetching results -->
+        <ig-card class="status-card processing-card" appearance="clear" shadow *ngIf="processing">
+          <strong class="processing-question">{{ submittedQuestion }}</strong>
+          <p class="processing-sub">{{ t('thanksClear') }}</p>
+          <div class="stepper">
+            <div class="step done">
+              <span class="step-mark"><igx-icon>check</igx-icon></span>
+              <span class="step-label">{{ t('creatingQuery') }}</span>
+            </div>
+            <div class="step active">
+              <span class="step-mark"><span class="mini-spinner" aria-hidden="true"></span></span>
+              <span class="step-label">{{ t('runningQuery') }}</span>
+            </div>
+            <div class="step active">
+              <span class="step-mark"><span class="mini-spinner" aria-hidden="true"></span></span>
+              <span class="step-label">{{ t('preparingResults') }}</span>
+            </div>
+          </div>
+        </ig-card>
+      </ng-container>
+
+      <ng-container *ngIf="isClarifying">
+        <div class="clarify">
+          <form class="clarify-form" (ngSubmit)="continueClarification()">
+            <label class="clarify-label" for="clarifyAnswer">{{ t('yourAnswer') }} <span class="req">*</span></label>
+            <input
+              id="clarifyAnswer"
+              class="clarify-input"
+              [(ngModel)]="clarifyAnswer"
+              name="clarifyAnswer"
+              autocomplete="off"
+              [disabled]="isLoading" />
+            <div class="clarify-actions">
+              <button igButton igButtonAppearance="outlined" type="button" (click)="cancelClarification()">{{ t('cancelQuery') }}</button>
+              <button igButton igButtonAppearance="filled" type="button">Advanced Query</button>
+              <button igButton igButtonColor="brand" igButtonAppearance="filled" type="submit" [disabled]="!clarifyAnswer.trim() || isLoading">{{ t('continue') }}</button>
+            </div>
+          </form>
+        </div>
+      </ng-container>
+
+      <div class="notice" [class.danger]="noticeTone === 'danger'" *ngIf="showNotice">
+        <igx-icon class="notice-icon">{{ noticeIcon }}</igx-icon>
+        <div class="notice-copy">
+          <strong>{{ noticeMessage }}</strong>
+          <p class="muted">{{ noticeHint }}</p>
+        </div>
+      </div>
+
+      <ig-card class="results-card" appearance="clear" shadow>
+        <div header class="results-head">
+          <h2>{{ t('results') }}</h2>
+          <span class="awaiting" *ngIf="isClarifying"><span class="mini-spinner" aria-hidden="true"></span> {{ t('awaiting') }}</span>
+        </div>
+
+        <div class="results-body">
+          <div class="fetching" *ngIf="isLoading && processing">
+            <span class="mini-spinner" aria-hidden="true"></span>
+            <div>
+              <strong>{{ t('fetching') }}</strong>
+              <p class="muted">{{ t('fetchingSub') }}</p>
+            </div>
+          </div>
+
+          <div class="skeleton" *ngIf="isClarifying || (isLoading && processing)">
+            <div class="skeleton-row" *ngFor="let row of skeletonRows"></div>
+          </div>
+
+          <ng-container *ngIf="!isClarifying && !(isLoading && processing)">
+            <div class="result" *ngIf="!isLoading && lastResult && lastResult.sample_rows.length; else emptyResults">
+              <div class="result-toolbar">
+                <div class="summary">
+                  <span *ngIf="lastResult.row_count !== null"><strong>{{ lastResult.row_count }}</strong> rows</span>
+                  <span><strong>{{ lastResult.dialect }}</strong> dialect</span>
+                  <span *ngIf="lastResult.validated">Verified</span>
+                </div>
+                <button igButton igButtonAppearance="outlined" igButtonColor="default" type="button" (click)="saveCurrentQuery()" [attr.title]="isCurrentSaved ? 'Already saved' : 'Save this query'" [disabled]="isCurrentSaved">
+                  <i class="ig-icon-o-save"></i> {{ isCurrentSaved ? t('saved') : t('saveQuery') }}
+                </button>
+                <button igButton igButtonAppearance="outlined" igButtonColor="default" type="button" (click)="exportToExcel(lastResult)" title="Download as Excel">
+                  <i class="ig-icon-o-microsoft-excel"></i> {{ t('exportExcel') }}
+                </button>
+              </div>
+              <details *ngIf="isAdmin && lastResult.sql">
+                <summary>{{ t('viewSql') }}</summary>
+                <pre>{{ lastResult.sql }}</pre>
+              </details>
+              <div class="grid-wrap">
+                <ag-grid-angular class="ig-ag-grid" style="width: 100%; height: 100%" [theme]="igniteTheme"
+                  [rowData]="rowData" [columnDefs]="columnDefs" [defaultColDef]="defaultColDef" [pagination]="true"
+                  [paginationPageSize]="10" [paginationPageSizeSelector]="false">
+                </ag-grid-angular>
+              </div>
+            </div>
+          </ng-container>
+
+          <ng-template #emptyResults>
+            <div class="empty-results" *ngIf="lastError; else notError">
+              <span class="empty-icon error"><igx-icon>error_outline</igx-icon></span>
+              <h3>We couldn't run that query</h3>
+              <p class="muted">{{ lastError }}</p>
+            </div>
+            <ng-template #notError>
+              <div class="empty-results" *ngIf="isNoData; else emptyDefault">
+                <span class="empty-icon info"><igx-icon>info</igx-icon></span>
+                <h3>{{ t('noResults') }}</h3>
+                <p class="muted">{{ t('noResultsSub') }}</p>
+              </div>
+              <ng-template #emptyDefault>
+                <div class="empty-results">
+                  <span class="empty-icon"><igx-icon>check</igx-icon></span>
+                  <h3>{{ t('resultsHere') }}</h3>
+                  <p class="muted">{{ t('resultsHereSub') }}</p>
+                </div>
+              </ng-template>
+            </ng-template>
+          </ng-template>
+        </div>
+      </ig-card>
+      </ng-container>
+    </section>
+
+    <!-- Saved Queries view -->
+    <section class="saved" *ngIf="activeView === 'saved'">
+      <div class="page-head"><h1>{{ t('savedQueries') }}</h1></div>
+      <ig-card class="results-card" appearance="clear" shadow>
+        <ng-container *ngIf="savedError; else savedContent">
+          <div class="notice danger">
+            <div class="notice-copy">
+              <strong>We could not load your saved queries.</strong>
+              <p class="muted">Please try again.</p>
+            </div>
+          </div>
+          <button igButton igButtonColor="brand" igButtonAppearance="filled" type="button" class="retry-btn" (click)="retrySavedQueries()">{{ t('tryAgain') }}</button>
+        </ng-container>
+
+        <ng-template #savedContent>
+          <div class="empty-results" *ngIf="!savedQueries.length; else savedList">
+            <span class="empty-icon neutral"><igx-icon>bookmark_border</igx-icon></span>
+            <h3>{{ t('noSaved') }}</h3>
+            <p class="muted">{{ t('noSavedSub') }}</p>
+          </div>
+          <ng-template #savedList>
+            <button class="history-item" *ngFor="let q of savedQueries; trackBy: trackByIndex"
+              (click)="openSavedQuery(q)">
+              <igx-icon>bookmark</igx-icon>
+              <span>
+                <strong>{{ q.name || q.question || 'Untitled query' }}</strong>
+                <small>Saved {{ q.savedAt | date:'medium' }}</small>
+              </span>
+              <igx-icon class="del" (click)="deleteSavedQuery($event, q)" title="Remove">delete</igx-icon>
+            </button>
+          </ng-template>
+        </ng-template>
+      </ig-card>
+    </section>
+
+    <!-- Saved query detail (read-only) -->
+    <section class="saved-detail" *ngIf="activeView === 'savedDetail' && openedSaved">
+      <button type="button" class="back-link" (click)="backToSaved()"><igx-icon>arrow_back</igx-icon> {{ t('backToSaved') }}</button>
+
+      <ig-card class="query-card" appearance="clear" shadow>
+        <strong class="saved-question">{{ openedSaved.question }}</strong>
+      </ig-card>
+
+      <ig-card class="results-card" appearance="clear" shadow>
+        <div header class="results-head">
+          <h2>{{ t('results') }} <span class="count-badge" *ngIf="openedSaved.result.row_count !== null">{{ openedSaved.result.row_count }}</span></h2>
+          <button type="button" class="excel-btn" (click)="exportToExcel(openedSaved.result)" title="Download as Excel">
+            <igx-icon>download</igx-icon> {{ t('exportExcel') }}
+          </button>
+        </div>
+        <div class="results-body">
+          <div class="grid-wrap">
+            <ag-grid-angular class="ig-ag-grid" style="width: 100%; height: 100%" [theme]="igniteTheme"
+              [rowData]="rowData" [columnDefs]="columnDefs" [defaultColDef]="defaultColDef" [pagination]="true"
+              [paginationPageSize]="10" [paginationPageSizeSelector]="false">
+            </ag-grid-angular>
+          </div>
+        </div>
+      </ig-card>
+    </section>
+
+    <!-- Settings view -->
+    <section class="placeholder settings-view" *ngIf="activeView === 'settings'">
+      <div class="page-head">
+        <h1>Settings</h1>
+      </div>
+      <p class="muted">Configure database access and analysis for {{ activeDatabase?.projectName || 'WarrantsTool' }}.
+      </p>
+
+      <div class="settings-tabs">
+        <button type="button" class="settings-tab" [class.active]="settingsTab === 'connection'"
+          (click)="settingsTab = 'connection'">Database connection</button>
+        <button type="button" class="settings-tab" [class.active]="settingsTab === 'analysis'"
+          (click)="settingsTab = 'analysis'">Database analysis</button>
+        <button type="button" class="settings-tab" [class.active]="settingsTab === 'access'"
+          (click)="settingsTab = 'access'">User access</button>
+        <button type="button" class="settings-tab" [class.active]="settingsTab === 'codebase'"
+          (click)="settingsTab = 'codebase'">Connect codebase</button>
+      </div>
+
+      <ng-container *ngIf="settingsTab === 'connection' && activeDatabase && !isEditingConnection">
+        <div class="connected-intro">
+          <h2>Connected database</h2>
+          <p class="muted">Review and maintain the active production connection.</p>
+        </div>
+        <ig-card class="connect-card" appearance="clear" shadow>
+          <div header class="connect-card-head connection-details-head">
+            <h2>Connection details</h2>
+            <span class="conn-badge"><igx-icon>check_circle</igx-icon> Connected</span>
+          </div>
+          <div class="conn-grid">
+            <div class="conn-field"><span class="conn-label">Project</span><strong>{{ activeDatabase.projectName }}</strong></div>
+            <div class="conn-field"><span class="conn-label">Database</span><strong>{{ activeDatabase.projectName }}</strong></div>
+            <div class="conn-field"><span class="conn-label">Type</span><strong>{{ activeDatabase.type }}</strong></div>
+            <div class="conn-field"><span class="conn-label">Status</span><strong>Connected</strong></div>
+            <div class="conn-field"><span class="conn-label">Connected</span><strong>{{ activeDatabase.connectedAt | date:'d MMM y, HH:mm' }}</strong></div>
+            <div class="conn-field"><span class="conn-label">Connected by</span><strong>{{ activeDatabase.connectedBy }}</strong></div>
+            <div class="conn-field"><span class="conn-label">Connection identity</span><strong>{{ maskIdentity(activeDatabase.identity) }}</strong></div>
+          </div>
+          <div class="connect-status success" *ngIf="connectionTestPassed"><igx-icon>check_circle</igx-icon><span>Connection verified.</span></div>
+          <div class="connect-status error" *ngIf="connectionError"><igx-icon>error_outline</igx-icon><span>{{ connectionError }}</span></div>
+          <div class="connect-actions">
+            <button igButton igButtonAppearance="outlined" type="button" (click)="editConnection()">Edit connection</button>
+            <button igButton igButtonAppearance="outlined" type="button" (click)="testConnection()" [disabled]="isTestingConnection">{{ isTestingConnection ? 'Testing…' : 'Test connection' }}</button>
+            <button igButton igButtonAppearance="outlined" type="button" class="danger-btn" (click)="promptDisconnect()">Disconnect database</button>
+          </div>
+        </ig-card>
+      </ng-container>
+
+      <ig-card class="connect-card" appearance="clear" shadow *ngIf="settingsTab === 'connection' && (!activeDatabase || isEditingConnection)">
+        <div header class="connect-card-head">
+          <h2>Connect database</h2>
+          <p class="muted">Enter the database details. Credentials are encrypted and remain masked.</p>
+        </div>
+
+        <div class="active-db-banner" *ngIf="activeDatabase">
+          <igx-icon>check_circle</igx-icon>
+          <span>Connected to <strong>{{ activeDatabase.projectName }}</strong></span>
+        </div>
+
+        <form class="connect-form" (ngSubmit)="testConnection()">
+          <div class="connect-form-grid">
+            <div class="form-column">
+              <h3 class="form-column-title">Project details</h3>
+
+              <label class="field-label" for="databaseType">Database type <span class="req">*</span></label>
+              <ig-dropdown id="databaseType" class="field-dropdown" appearance="outlined" behavior="select"
+                [items]="databaseTypeItems" [selected]="selectedDatabaseType"
+                (selectedChange)="onDatabaseTypeChange($event)"></ig-dropdown>
+              <p class="field-hint">{{ selectedDatabaseType?.label }} selected</p>
+
+              <label class="field-label" for="server">Server / host <span class="req">*</span></label>
+              <input id="server" class="field-input" [(ngModel)]="connectForm.server" name="server"
+                (input)="invalidateConnectionTest()" autocomplete="off" required />
+
+              <label class="field-label" for="database">Database name <span class="req">*</span></label>
+              <input id="database" class="field-input" [(ngModel)]="connectForm.database" name="database"
+                (input)="invalidateConnectionTest()" autocomplete="off" required />
+            </div>
+
+            <div class="form-column">
+              <h3 class="form-column-title">Authentication</h3>
+
+              <label class="field-label" for="authMethod">Authentication method <span class="req">*</span></label>
+              <ig-dropdown id="authMethod" class="field-dropdown" appearance="outlined" behavior="select"
+                [items]="authItems" [selected]="selectedAuth" (selectedChange)="onAuthChange($event)"></ig-dropdown>
+
+              <label class="field-label" for="username">User identity <span class="req"
+                  *ngIf="isSqlAuth">*</span></label>
+              <input id="username" class="field-input" [(ngModel)]="connectForm.username" name="username"
+                (input)="invalidateConnectionTest()" autocomplete="off" [disabled]="!isSqlAuth" />
+
+              <label class="field-label" for="password">Password / secret <span class="req"
+                  *ngIf="isSqlAuth">*</span></label>
+              <input id="password" type="password" class="field-input" [(ngModel)]="connectForm.password"
+                name="password" (input)="invalidateConnectionTest()" autocomplete="off" [disabled]="!isSqlAuth" />
+            </div>
+          </div>
+
+          <div class="connect-status success" *ngIf="connectionTestPassed">
+            <igx-icon>check_circle</igx-icon>
+            <span>Connection verified.</span>
+          </div>
+          <div class="connect-status error" *ngIf="connectionError">
+            <igx-icon>error_outline</igx-icon>
+            <span>{{ connectionError }}</span>
+          </div>
+
+          <div class="connect-actions">
+            <button igButton igButtonAppearance="outlined" type="submit"
+              [disabled]="isTestingConnection || isConnectingDatabase || !connectForm.server.trim() || !connectForm.database.trim() || (isSqlAuth && (!connectForm.username.trim() || !connectForm.password.trim()))">
+              {{ isTestingConnection ? 'Testing…' : 'Test connection' }}
+            </button>
+            <button igButton igButtonColor="brand" igButtonAppearance="filled" type="button"
+              [disabled]="isConnectingDatabase || !connectForm.server.trim() || !connectForm.database.trim() || (isSqlAuth && (!connectForm.username.trim() || !connectForm.password.trim()))"
+              (click)="connectDatabase()">
+              {{ isConnectingDatabase ? 'Connecting…' : 'Connect database' }}
+            </button>
+            <button igButton igButtonAppearance="outlined" type="button" [disabled]="isConnectingDatabase"
+              (click)="closeConnectForm()">Cancel</button>
+          </div>
+        </form>
+      </ig-card>
+
+      <ng-container *ngIf="settingsTab === 'analysis'">
+        <div class="analysis-head">
+          <div>
+            <h2>Database analysis</h2>
+            <p class="muted">Analysis reads schema metadata to prepare accurate query context. It does not copy business records.</p>
+          </div>
+          <span class="analysis-status-badge" [ngClass]="analysisStatus">
+            <igx-icon>{{ analysisStatus === 'ready' ? 'check_circle' : analysisStatus === 'in-progress' ? 'sync' : 'schedule' }}</igx-icon>
+            {{ analysisStatusLabel }}
+          </span>
+        </div>
+
+        <ig-card class="connect-card" appearance="clear" shadow *ngIf="activeDatabase">
+          <div header class="connect-card-head connection-details-head">
+            <h2>Connection details</h2>
+            <span class="conn-badge"><igx-icon>check_circle</igx-icon> Connected</span>
+          </div>
+          <div class="conn-grid">
+            <div class="conn-field"><span class="conn-label">Project</span><strong>{{ activeDatabase.projectName }}</strong></div>
+            <div class="conn-field"><span class="conn-label">Database</span><strong>{{ activeDatabase.projectName }}</strong></div>
+            <div class="conn-field"><span class="conn-label">Type</span><strong>{{ activeDatabase.type }}</strong></div>
+            <div class="conn-field"><span class="conn-label">Status</span><strong>Connected</strong></div>
+            <div class="conn-field"><span class="conn-label">Connected</span><strong>{{ activeDatabase.connectedAt | date:'d MMM y, HH:mm' }}</strong></div>
+            <div class="conn-field"><span class="conn-label">Connected by</span><strong>{{ activeDatabase.connectedBy }}</strong></div>
+            <div class="conn-field"><span class="conn-label">Connection identity</span><strong>{{ maskIdentity(activeDatabase.identity) }}</strong></div>
+          </div>
+        </ig-card>
+
+        <ig-card class="connect-card" appearance="clear" shadow *ngIf="!activeDatabase">
+          <div class="analysis-empty">
+            <igx-icon>info</igx-icon>
+            <p class="muted">Connect a database on the <strong>Database connection</strong> tab before running analysis.</p>
+          </div>
+        </ig-card>
+
+        <ig-card class="connect-card" appearance="clear" shadow *ngIf="activeDatabase && analysisStatus === 'not-started'">
+          <h2 class="analysis-card-title">Ready to analyze {{ activeDatabase.projectName }}</h2>
+          <p class="muted">Run analysis once the database connection is stable. You can rerun it after schema changes.</p>
+          <div class="connect-status error" *ngIf="analysisError"><igx-icon>error_outline</igx-icon><span>{{ analysisError }}</span></div>
+          <div class="analysis-actions">
+            <button igButton igButtonColor="brand" igButtonAppearance="filled" type="button" (click)="runAnalysis()">Run database analysis</button>
+          </div>
+        </ig-card>
+
+        <ig-card class="connect-card" appearance="clear" shadow *ngIf="activeDatabase && analysisStatus === 'in-progress'">
+          <div class="analysis-progress-head">
+            <igx-icon>insights</igx-icon>
+            <div>
+              <h2 class="analysis-card-title">Analyzing your database</h2>
+              <p class="muted">Keep this page open while schema context is prepared.</p>
+            </div>
+          </div>
+          <ig-progress-bar
+            label="Processing..."
+            variant="indeterminate"
+            helperText="Please wait while we process your request">
+          </ig-progress-bar>
+          <ol class="analysis-steps">
+            <li [class.active]="analysisStep >= 1" [class.done]="analysisStep > 1">Reading schema</li>
+            <li [class.active]="analysisStep >= 2" [class.done]="analysisStep > 2">Analyzing tables and columns</li>
+            <li [class.active]="analysisStep >= 3">Preparing query context</li>
+          </ol>
+        </ig-card>
+
+        <ng-container *ngIf="activeDatabase && analysisStatus === 'ready' && analysisResult">
+          <div class="analysis-ready-banner">
+            <igx-icon>check_circle</igx-icon>
+            <div>
+              <strong>Database analysis is ready</strong>
+              <span>Completed {{ analysisCompletedAt | date:'d MMM y \'at\' HH:mm' }}.</span>
+            </div>
+          </div>
+          <div class="analysis-stats">
+            <div class="analysis-stat"><strong>{{ analysisResult.tables }}</strong><span>Tables</span></div>
+            <div class="analysis-stat"><strong>{{ analysisResult.columns }}</strong><span>Columns</span></div>
+            <div class="analysis-stat"><strong>{{ analysisResult.relationships }}</strong><span>Relationships</span></div>
+          </div>
+          <div class="analysis-actions">
+            <button igButton igButtonColor="brand" igButtonAppearance="filled" type="button" (click)="goToNewQuery()">Go to new query</button>
+            <button igButton igButtonAppearance="outlined" type="button" (click)="runAnalysis()">Run analysis again</button>
+          </div>
+        </ng-container>
+      </ng-container>
+
+      <ng-container *ngIf="settingsTab === 'access'">
+        <div class="access-toolbar">
+          <div class="access-search">
+            <igx-icon>search</igx-icon>
+            <input type="text" [(ngModel)]="accessSearch" name="accessSearch" placeholder="Search users" autocomplete="off" />
+          </div>
+          <button igButton igButtonColor="brand" igButtonAppearance="filled" type="button" (click)="openAddUser()">Add user</button>
+        </div>
+
+        <ig-card class="connect-card" appearance="clear" shadow>
+          <div header class="connect-card-head access-card-head">
+            <h2>Users with access</h2>
+          </div>
+          <div class="access-table">
+            <div class="access-row access-head-row">
+              <span>Name</span><span>PAS Id</span><span>Email</span><span>Role</span><span>Access status</span><span>Date added</span><span>Actions</span>
+            </div>
+            <div class="access-row" *ngFor="let u of filteredAccessUsers; trackBy: trackByIndex">
+              <span class="access-name"><span class="access-avatar">{{ initials(u.name) }}</span> {{ u.name }}</span>
+              <span>{{ u.passId }}</span>
+              <span class="access-email">{{ u.email }}</span>
+              <span>{{ u.role }}</span>
+              <span><span class="access-badge" [ngClass]="accessStatusClass(u.status)">{{ u.status }}</span></span>
+              <span>{{ u.dateAdded }}</span>
+              <span class="access-actions">
+                <button type="button" class="access-edit" title="Edit user" (click)="openEditUser(u)"><i class="ig-icon-o-edit"></i></button>
+                <button type="button" class="access-delete" title="Remove user" (click)="deleteUser($event, u)"><i class="ig-icon-o-trash"></i></button>
+              </span>
+            </div>
+            <div class="access-empty" *ngIf="!filteredAccessUsers.length">No users match your search.</div>
+          </div>
+        </ig-card>
+      </ng-container>
+
+      <ig-card class="connect-card" appearance="clear" shadow *ngIf="settingsTab === 'codebase'">
+        <div class="empty-results">
+          <span class="empty-icon neutral"><igx-icon>code</igx-icon></span>
+          <h3>Connect codebase</h3>
+          <p class="muted">This functionality has not been developed for the demo.</p>
+        </div>
+      </ig-card>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <span>Designed by <strong>BrainBots</strong> · Hackathon 2026</span>
+  </footer>
+</div>
+
+<igx-toast #toast></igx-toast>
+
+<div class="dialog-backdrop" *ngIf="showLeaveDialog" (click)="dismissLeaveDialog()">
+  <div class="dialog" (click)="$event.stopPropagation()">
+    <button type="button" class="dialog-close" (click)="dismissLeaveDialog()"
+      aria-label="Close"><igx-icon>close</igx-icon></button>
+    <div class="dialog-head">
+      <igx-icon class="dialog-warn">warning_amber</igx-icon>
+      <h2 class="dialog-title">Save this query before leaving?</h2>
+    </div>
+    <p class="muted dialog-sub">This query has not been saved. You can save it now or continue without saving.</p>
+    <div class="dialog-actions">
+      <button igButton igButtonAppearance="outlined" type="button" (click)="leaveWithoutSaving()">Cancel</button>
+      <button igButton igButtonColor="brand" igButtonAppearance="filled" type="button"
+        (click)="leaveAndSave()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="dialog-backdrop" *ngIf="showDisconnectDialog" (click)="dismissDisconnectDialog()">
+  <div class="dialog" (click)="$event.stopPropagation()">
+    <button type="button" class="dialog-close" (click)="dismissDisconnectDialog()"
+      aria-label="Close"><igx-icon>close</igx-icon></button>
+    <div class="dialog-head">
+      <igx-icon class="dialog-warn danger">error</igx-icon>
+      <h2 class="dialog-title">Disconnect database?</h2>
+    </div>
+    <p class="muted dialog-sub">New queries and delegated access will become unavailable. Saved records are kept but stay inaccessible until a database is connected again.</p>
+    <div class="dialog-actions">
+      <button igButton igButtonAppearance="outlined" type="button" (click)="dismissDisconnectDialog()">Cancel</button>
+      <button type="button" class="dialog-danger-btn" (click)="confirmDisconnect()">Disconnect database</button>
+    </div>
+  </div>
+</div>
+
+<div class="dialog-backdrop" *ngIf="showUnrelatedDialog" (click)="dismissUnrelatedDialog()">
+  <div class="dialog" (click)="$event.stopPropagation()">
+    <button type="button" class="dialog-close" (click)="dismissUnrelatedDialog()"
+      aria-label="Close"><igx-icon>close</igx-icon></button>
+    <div class="dialog-head">
+      <igx-icon class="dialog-warn">help_outline</igx-icon>
+      <h2 class="dialog-title">This looks like a new question</h2>
+    </div>
+    <p class="muted dialog-sub">Your message doesn't seem to refine the current results. Do you want to start a new query, or keep refining the current results?</p>
+    <div class="dialog-actions">
+      <button igButton igButtonAppearance="outlined" type="button" (click)="keepRefining()">Keep refining</button>
+      <button igButton igButtonColor="brand" igButtonAppearance="filled" type="button" (click)="startNewFromRefine()">Start new query</button>
+    </div>
+  </div>
+</div>
+
+<div class="dialog-backdrop" *ngIf="showDeleteQueryDialog" (click)="dismissDeleteQueryDialog()">
+  <div class="dialog" (click)="$event.stopPropagation()">
+    <button type="button" class="dialog-close" (click)="dismissDeleteQueryDialog()"
+      aria-label="Close"><igx-icon>close</igx-icon></button>
+    <div class="dialog-head">
+      <igx-icon class="dialog-warn danger">error</igx-icon>
+      <h2 class="dialog-title">Delete this saved query?</h2>
+    </div>
+    <p class="muted dialog-sub">This saved query will be permanently removed. This action cannot be undone.</p>
+    <div class="dialog-actions">
+      <button igButton igButtonAppearance="outlined" type="button" (click)="dismissDeleteQueryDialog()">Cancel</button>
+      <button type="button" class="dialog-danger-btn" (click)="confirmDeleteSavedQuery()">Delete query</button>
+    </div>
+  </div>
+</div>
+
+<div class="dialog-backdrop" *ngIf="showUserDialog" (click)="dismissUserDialog()">
+  <div class="dialog" (click)="$event.stopPropagation()">
+    <button type="button" class="dialog-close" (click)="dismissUserDialog()"
+      aria-label="Close"><igx-icon>close</igx-icon></button>
+    <h2 class="dialog-title">{{ userDialogMode === 'edit' ? 'Edit user' : 'Add user' }}</h2>
+    <form (ngSubmit)="saveUser()">
+      <label class="dialog-label" for="userName">Name</label>
+      <input id="userName" class="clarify-input" [(ngModel)]="userForm.name" name="userName" autocomplete="off"
+        placeholder="e.g. Alex Morgan" (keydown.escape)="dismissUserDialog()" />
+
+      <label class="dialog-label" for="userEmail">Email</label>
+      <input id="userEmail" class="clarify-input" [(ngModel)]="userForm.email" name="userEmail" autocomplete="off"
+        placeholder="name@sdworx.com" (keydown.escape)="dismissUserDialog()" />
+
+      <label class="dialog-label" for="userPassId">PAS Id</label>
+      <input id="userPassId" class="clarify-input" [(ngModel)]="userForm.passId" name="userPassId" autocomplete="off"
+        placeholder="SD######" (keydown.escape)="dismissUserDialog()" />
+
+      <label class="dialog-label">Role</label>
+      <div class="role-toggle">
+        <button type="button" [class.active]="userForm.role === 'Consultant'"
+          (click)="userForm.role = 'Consultant'"><igx-icon>badge</igx-icon> Consultant</button>
+        <button type="button" [class.active]="userForm.role === 'Admin'"
+          (click)="userForm.role = 'Admin'"><igx-icon>shield</igx-icon> Admin</button>
+      </div>
+      <p class="dialog-caption">Access is scoped to the WarrantsTool project only. Users only see data and actions within this workspace.</p>
+
+      <div class="dialog-actions">
+        <button igButton igButtonAppearance="outlined" type="button" (click)="dismissUserDialog()">Cancel</button>
+        <button igButton igButtonColor="brand" igButtonAppearance="filled" type="submit"
+          [disabled]="!userForm.name.trim() || !userForm.email.trim()">{{ userDialogMode === 'edit' ? 'Save changes' : 'Add user' }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="dialog-backdrop" *ngIf="showDeleteUserDialog" (click)="dismissDeleteUserDialog()">
+  <div class="dialog" (click)="$event.stopPropagation()">
+    <button type="button" class="dialog-close" (click)="dismissDeleteUserDialog()"
+      aria-label="Close"><igx-icon>close</igx-icon></button>
+    <div class="dialog-head">
+      <igx-icon class="dialog-warn danger">error</igx-icon>
+      <h2 class="dialog-title">Remove this user?</h2>
+    </div>
+    <p class="muted dialog-sub">This user will lose access to WarrantsTool. This action cannot be undone.</p>
+    <div class="dialog-actions">
+      <button igButton igButtonAppearance="outlined" type="button" (click)="dismissDeleteUserDialog()">Cancel</button>
+      <button type="button" class="dialog-danger-btn" (click)="confirmDeleteUser()">Remove user</button>
+    </div>
+  </div>
+</div>
+
+<div class="dialog-backdrop" *ngIf="showSaveDialog" (click)="cancelSaveDialog()">
+  <div class="dialog" (click)="$event.stopPropagation()">
+    <h2 class="dialog-title">Save query</h2>
+    <form (ngSubmit)="confirmSaveQuery()">
+      <label class="dialog-label" for="saveName">Query name</label>
+      <input id="saveName" class="clarify-input" [class.input-error]="saveNameError" [(ngModel)]="saveName" name="saveName" autocomplete="off"
+        placeholder="e.g. Active Belgian warrants" (ngModelChange)="saveNameError = null" (keydown.escape)="cancelSaveDialog()" />
+      <p class="dialog-error" *ngIf="saveNameError">{{ saveNameError }}</p>
+
+      <div class="dialog-original" *ngIf="originalQuestion">
+        <strong>Original question</strong>
+        <p>{{ originalQuestion }}</p>
+      </div>
+
+      <p class="dialog-caption" *ngIf="lastResult && lastResult.row_count !== null">
+        {{ lastResult.row_count }} results will be associated with this saved query.
+      </p>
+
+      <div class="dialog-actions">
+        <button igButton igButtonAppearance="outlined" type="button" (click)="cancelSaveDialog()">Cancel</button>
+        <button igButton igButtonColor="brand" igButtonAppearance="filled" type="submit"
+          [disabled]="!saveName.trim()">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="dialog-backdrop" *ngIf="showQueryHelp" (click)="closeQueryHelp()">
+  <div class="dialog query-help" (click)="$event.stopPropagation()">
+    <button type="button" class="dialog-close" (click)="closeQueryHelp()"
+      aria-label="Close"><igx-icon>close</igx-icon></button>
+    <h2 class="dialog-title">{{ queryHelp.title }}</h2>
+
+    <h3 class="query-help-lead">{{ queryHelp.leadTitle }}</h3>
+    <p class="muted query-help-intro">{{ queryHelp.lead }}</p>
+
+    <h4 class="query-help-subhead">{{ queryHelp.guidanceHead }}</h4>
+    <ol class="query-help-list">
+      <li *ngFor="let g of queryHelp.guidance">
+        <strong>{{ g.title }}</strong>
+        <span class="muted">{{ g.desc }}</span>
+      </li>
+    </ol>
+
+    <h4 class="query-help-subhead">{{ queryHelp.examplesHead }}</h4>
+    <ul class="query-help-examples">
+      <li *ngFor="let e of queryHelp.examples">
+        <strong>{{ e.text }}</strong>
+        <span class="muted">{{ e.tag }}</span>
+      </li>
+    </ul>
+
+    <h4 class="query-help-subhead">{{ queryHelp.broadHead }}</h4>
+    <ul class="query-help-broad">
+      <li *ngFor="let b of queryHelp.broad">
+        <strong>{{ b.text }}</strong>
+        <span class="muted">{{ b.desc }}</span>
+      </li>
+    </ul>
+  </div>
+</div>
